@@ -1,0 +1,6 @@
+{
+  "name": "نور القرآن",
+  "description": "تطبيق إسلامي متكامل: المصحف الشريف كاملاً مع التلاوة المتزامنة وتظليل الآية بالأحمر، الرقية الشرعية الكاملة، ومسابقة الأسئلة الدينية التفاعلية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

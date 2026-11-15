@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">نور القرآن</string>
+    <string name="nav_quran">القرآن</string>
+    <string name="nav_ruqyah">الرقية</string>
+    <string name="nav_quiz">المسابقة</string>
+    <string name="nav_settings">الإعدادات</string>
+    <string name="bismillah">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</string>
+    <string name="search_surah_hint">ابحث باسم السورة أو رقمها...</string>
+    <string name="loading_surah">جاري تحميل السورة الكريمة...</string>
+    <string name="retry_load">إعادة المحاولة</string>
+</resources>
