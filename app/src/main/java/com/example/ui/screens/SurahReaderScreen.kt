@@ -34,7 +34,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.MenuBook
@@ -50,10 +52,13 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VerticalAlignCenter
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -84,6 +89,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ai.TafsirUiState
 import com.example.data.catalog.RecitersCatalog
 import com.example.data.catalog.SurahCatalog
 import com.example.data.model.AyahItem
@@ -143,6 +149,7 @@ fun SurahReaderScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val tafsirState by viewModel.tafsirState.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
     val isBookmarked by viewModel.isBookmarked.collectAsStateWithLifecycle()
@@ -168,6 +175,15 @@ fun SurahReaderScreen(
             selectedReciterId = settings.selectedReciterId,
             onSelectReciter = { reciter -> viewModel.switchReciterAndResume(reciter.id) },
             onDismiss = { showReciterSheet = false }
+        )
+    }
+
+    if (tafsirState !is TafsirUiState.Idle) {
+        GeminiTafsirBottomSheet(
+            tafsirState = tafsirState,
+            onAskQuestion = { viewModel.askQuranQuestion(it) },
+            onRetry = { viewModel.explainActiveOrFirstVerse() },
+            onDismiss = { viewModel.dismissTafsir() }
         )
     }
 
@@ -213,6 +229,17 @@ fun SurahReaderScreen(
                                 text = "${surahMeta.revelationType.arabicLabel} • ${surahMeta.ayahCount.toArabicDigits()} آية",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.explainActiveOrFirstVerse() },
+                            modifier = Modifier.testTag("ai_tafsir_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = "التفسير الميسر بالذكاء الاصطناعي",
+                                tint = noorColors.goldAccent
                             )
                         }
 
@@ -1072,3 +1099,161 @@ private fun SurahPlayerDock(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GeminiTafsirBottomSheet(
+    tafsirState: TafsirUiState,
+    onAskQuestion: (String) -> Unit,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val noorColors = LocalNoorColors.current
+    var followUpQuery by remember { mutableStateOf("") }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = CircleShape,
+                    color = noorColors.goldContainer,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            tint = noorColors.goldAccent
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = when (tafsirState) {
+                            is TafsirUiState.Streaming -> tafsirState.title
+                            is TafsirUiState.Success -> tafsirState.title
+                            else -> "التفسير الميسر والتدبر (Gemini AI)"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "مدعوم عبر Firebase AI Logic",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            HorizontalDivider(color = noorColors.goldAccent.copy(alpha = 0.3f))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(260.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                when (tafsirState) {
+                    is TafsirUiState.Loading -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "جاري إعداد التفسير الميسر...",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
+
+                    is TafsirUiState.Streaming -> {
+                        Text(
+                            text = tafsirState.text,
+                            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    is TafsirUiState.Success -> {
+                        Text(
+                            text = tafsirState.text,
+                            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    is TafsirUiState.Error -> {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = tafsirState.message,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = noorColors.wrongRed,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(onClick = onRetry) {
+                                Icon(imageVector = Icons.Filled.Refresh, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(text = "إعادة المحاولة")
+                            }
+                        }
+                    }
+
+                    is TafsirUiState.Idle -> Unit
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = followUpQuery,
+                    onValueChange = { followUpQuery = it },
+                    placeholder = { Text("اسأل عن معنى آية أو كلمة في السورة...") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = {
+                        val q = followUpQuery.trim()
+                        if (q.isNotEmpty()) {
+                            onAskQuestion(q)
+                            followUpQuery = ""
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "إرسال السؤال",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+    }
+}
+

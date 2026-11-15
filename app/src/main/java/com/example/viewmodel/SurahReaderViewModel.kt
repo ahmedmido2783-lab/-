@@ -4,18 +4,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.AppContainer
+import com.example.ai.TafsirUiState
 import com.example.audio.RecitationPlaybackState
 import com.example.data.catalog.RecitersCatalog
 import com.example.data.catalog.SurahCatalog
 import com.example.data.model.AyahItem
 import com.example.data.model.SurahMeta
 import com.example.data.model.UserSettings
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 sealed interface SurahVersesUiState {
@@ -34,6 +35,11 @@ class SurahReaderViewModel(
 
     private val _uiState = MutableStateFlow<SurahVersesUiState>(SurahVersesUiState.Loading)
     val uiState: StateFlow<SurahVersesUiState> = _uiState.asStateFlow()
+
+    private val _tafsirState = MutableStateFlow<TafsirUiState>(TafsirUiState.Idle)
+    val tafsirState: StateFlow<TafsirUiState> = _tafsirState.asStateFlow()
+
+    private var tafsirJob: Job? = null
 
     val isBookmarked: StateFlow<Boolean> =
         container.quranRepository.observeIsBookmarked(surahNumber)
@@ -64,6 +70,46 @@ class SurahReaderViewModel(
                 )
             }
         }
+    }
+
+    fun explainActiveOrFirstVerse() {
+        val currentVerses = (_uiState.value as? SurahVersesUiState.Success)?.verses ?: return
+        val activeNum = if (playbackState.value.sessionTag == "surah_$surahNumber" &&
+            playbackState.value.currentAyahNumber > 0
+        ) {
+            playbackState.value.currentAyahNumber
+        } else {
+            initialAyah.coerceIn(1, currentVerses.size)
+        }
+        val ayah = currentVerses.firstOrNull { it.ayahNumber == activeNum } ?: currentVerses.firstOrNull() ?: return
+        tafsirJob?.cancel()
+        tafsirJob = viewModelScope.launch {
+            container.geminiAssistant.streamVerseTafsir(
+                surahName = surahMeta.arabicName,
+                ayahNumber = ayah.ayahNumber,
+                ayahText = ayah.textUthmani
+            ).collect { state ->
+                _tafsirState.value = state
+            }
+        }
+    }
+
+    fun askQuranQuestion(question: String) {
+        val trimmed = question.trim()
+        if (trimmed.isEmpty()) return
+        tafsirJob?.cancel()
+        tafsirJob = viewModelScope.launch {
+            container.geminiAssistant.streamScholarlyAnswer(
+                "بخصوص سورة ${surahMeta.arabicName}: $trimmed"
+            ).collect { state ->
+                _tafsirState.value = state
+            }
+        }
+    }
+
+    fun dismissTafsir() {
+        tafsirJob?.cancel()
+        _tafsirState.value = TafsirUiState.Idle
     }
 
     fun playFromAyah(ayahNumber: Int = 1) {

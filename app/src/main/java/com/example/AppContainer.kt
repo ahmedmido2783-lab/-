@@ -1,6 +1,7 @@
 package com.example
 
 import android.content.Context
+import com.example.ai.GeminiQuranAssistant
 import com.example.audio.ArabicTtsReader
 import com.example.audio.RecitationPlayerManager
 import com.example.data.local.QuranDatabase
@@ -19,6 +20,7 @@ class AppContainer(context: Context) {
     val settingsRepository: SettingsRepository by lazy { SettingsRepository(appContext) }
     val playerManager: RecitationPlayerManager by lazy { RecitationPlayerManager(appContext) }
     val ttsReader: ArabicTtsReader by lazy { ArabicTtsReader(appContext) }
+    val geminiAssistant: GeminiQuranAssistant by lazy { GeminiQuranAssistant() }
 
     fun release() {
         playerManager.release()

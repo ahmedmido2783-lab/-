@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -98,7 +99,7 @@ fun QuizSessionScreen(
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = state.category.arabicName,
+                            text = state.categoryTitle,
                             style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -132,7 +133,44 @@ fun QuizSessionScreen(
                 .navigationBarsPadding(),
             contentAlignment = Alignment.TopCenter
         ) {
-            if (state.isFinished) {
+            if (state.isLoadingAi) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "جاري توليد أسئلة دينية جديدة عبر Gemini AI...",
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else if (state.aiErrorMessage != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = state.aiErrorMessage ?: "حدث خطأ",
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center,
+                        color = noorColors.wrongRed
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { viewModel.startNewQuiz() }) {
+                        Icon(imageVector = Icons.Filled.Refresh, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "إعادة المحاولة")
+                    }
+                }
+            } else if (state.isFinished) {
                 QuizSummaryView(
                     total = state.questions.size,
                     score = state.score,

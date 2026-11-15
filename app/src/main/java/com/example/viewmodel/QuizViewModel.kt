@@ -20,7 +20,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class QuizSessionUiState(
-    val category: QuizCategory = QuizCategory.ALL,
+    val categoryTitle: String = QuizCategory.ALL.arabicName,
+    val isLoadingAi: Boolean = false,
+    val aiErrorMessage: String? = null,
     val questions: List<QuizQuestion> = emptyList(),
     val currentIndex: Int = 0,
     val selectedOptionIndex: Int? = null,
@@ -60,6 +62,49 @@ class QuizViewModel(
     fun startNewQuiz() {
         container.playerManager.stop()
         container.ttsReader.stop()
+        timerJob?.cancel()
+
+        if (categoryId.startsWith("ai:")) {
+            val topic = categoryId.removePrefix("ai:").ifBlank { "القرآن الكريم والسيرة النبوية" }
+            val count = if (questionLimit > 0) questionLimit.coerceAtMost(10) else 5
+            viewModelScope.launch {
+                val currentSettings = container.settingsRepository.settingsFlow.first()
+                _uiState.value = QuizSessionUiState(
+                    categoryTitle = "مسابقة Gemini: $topic",
+                    isLoadingAi = true,
+                    aiErrorMessage = null,
+                    timeRemainingSeconds = currentSettings.quizTimeSeconds,
+                    totalTimeSeconds = currentSettings.quizTimeSeconds
+                )
+                val result = container.geminiAssistant.generateIslamicQuizQuestions(topic, count)
+                result.onSuccess { aiQuestions ->
+                    _uiState.update {
+                        it.copy(
+                            isLoadingAi = false,
+                            aiErrorMessage = null,
+                            questions = aiQuestions,
+                            currentIndex = 0,
+                            selectedOptionIndex = null,
+                            isRevealed = false,
+                            score = 0,
+                            currentStreak = 0,
+                            bestStreak = 0,
+                            isFinished = false
+                        )
+                    }
+                    beginQuestion(currentSettings)
+                }.onFailure { err ->
+                    _uiState.update {
+                        it.copy(
+                            isLoadingAi = false,
+                            aiErrorMessage = err.localizedMessage ?: "تعذّر توليد الأسئلة عبر Gemini AI."
+                        )
+                    }
+                }
+            }
+            return
+        }
+
         val category = QuizCategory.entries.firstOrNull { it.id == categoryId } ?: QuizCategory.ALL
         val pool = QuizCatalog.getForCategory(category).shuffled()
         val selected = if (questionLimit > 0) pool.take(questionLimit) else pool
@@ -68,7 +113,7 @@ class QuizViewModel(
             val currentSettings = container.settingsRepository.settingsFlow.first()
             val timeLimit = currentSettings.quizTimeSeconds
             _uiState.value = QuizSessionUiState(
-                category = category,
+                categoryTitle = category.arabicName,
                 questions = selected,
                 currentIndex = 0,
                 selectedOptionIndex = null,
@@ -88,7 +133,7 @@ class QuizViewModel(
     private fun beginQuestion(currentSettings: UserSettings) {
         timerJob?.cancel()
         val state = _uiState.value
-        val question = state.currentQuestion ?: return
+        if (state.currentQuestion == null) return
         if (currentSettings.quizAutoReadQuestion) {
             speakCurrentQuestion(includeOptions = true, speechRate = currentSettings.ttsSpeechRate)
         }
@@ -100,7 +145,6 @@ class QuizViewModel(
                         val remaining = _uiState.value.timeRemainingSeconds - 1
                         _uiState.update { it.copy(timeRemainingSeconds = remaining) }
                         if (remaining <= 0) {
-                            // Time expired: reveal correct answer so viewers learn
                             _uiState.update {
                                 it.copy(
                                     isRevealed = true,
